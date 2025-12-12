@@ -1,0 +1,8 @@
+{
+    "frameRate": 144,
+    "fullscreen": false,
+    "volume": {
+        "music": 5,
+        "sfx": 100
+    }
+}
