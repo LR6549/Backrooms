@@ -77,8 +77,7 @@ public:
 };
 
 /*
-++ The Layout for a Room
-* Use: Layout<sizeX, sizeY>();
+++ The Tile layout for a Room
 */
 struct Layout {
 private:
