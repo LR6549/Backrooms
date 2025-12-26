@@ -70,6 +70,10 @@ bool isPaused = false;
 STATE currentState  = STATE::TITLESCREEN;
 STATE lastState     = STATE::NONE;
 
+//++ Chunk Management
+#include "room.hpp"
+ChunkManager chunkManager;
+
 std::unordered_map<std::string, float> frameMap = {
     {"animatedBackroundFrame", 0.0f}
 };
@@ -262,6 +266,20 @@ void initState() {
             case STATE::EXPLORING: {
                 playMusic("baseTheme");
                 // TODO: Exploring logic
+                chunkManager.chunks.emplace_back(0);
+                Chunk& c = chunkManager.chunks.back();
+
+                // simple test layout
+                for (int y = 0; y < CHUNKSIZE; ++y) {
+                    for (int x = 0; x < CHUNKSIZE; ++x) {
+                        if (x == 0 || y == 0 || x == CHUNKSIZE - 1 || y == CHUNKSIZE - 1)
+                            c.tiles[y][x].isWall = true;
+                        else
+                            c.tiles[y][x].isGround = true;
+                    }
+                }
+
+                autotileChunk(c);
                 break;
             }
             default: {
@@ -337,6 +355,7 @@ void update(float deltaTime) {
         }
         case STATE::EXPLORING: {
             // TODO: Exploring logic
+            chunkManager.update(renderer, tileset);
             break;
         }
         default: {
@@ -468,6 +487,7 @@ void render() {
         }
         case STATE::EXPLORING: {
             // TODO: Exploring logic
+            chunkManager.render(renderer);
             break;
         }
         default: {
@@ -641,6 +661,8 @@ bool setup() {
     loadMusic();
     loadSounds();
     loadTextures();
+
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 
     updateMixerGain();
     return true;

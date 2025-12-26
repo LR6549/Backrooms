@@ -1,0 +1,17 @@
+{
+    // Levels Based on: https://backrooms-wiki.wikidot.com/normal-levels-i
+    // Items  Based on: https://backrooms-wiki.wikidot.com/objects
+
+    "0":{
+        "wallName":"yellowCarpetWalls",
+        "variations":3,
+        "possibleItems":[
+            "Almond Water",
+            "FlashLight",
+            ""
+        ],
+        "exits":[
+            
+        ]
+    }
+}

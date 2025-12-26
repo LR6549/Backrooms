@@ -1,3 +1,4 @@
+#pragma once
 
 #include "JFLX/logging.hpp"
 #include <iostream>
@@ -8,142 +9,215 @@
 #include <vector>
 #include <deque>
 
+#include <SDL3/SDL.h>
+
+#include "player.hpp"
+
 struct Chunk;
 
 static constexpr int CHUNKSIZE = 16;
+static constexpr int TILESIZE   = 64;
+static constexpr int CHUNKPIXELSIZE   = CHUNKSIZE * TILESIZE;
 
 std::deque<Chunk*> generationQueue;
 std::vector<Chunk*> allChuncks;
+
+enum NeighbourBits : uint8_t {
+    UP    = 1 << 0, // 0001
+    LEFT  = 1 << 1, // 0010
+    RIGHT = 1 << 2, // 0100
+    DOWN  = 1 << 3  // 1000
+};
 
 /*
 ++ A simple Struct for Storing Index Data
 */
 struct Tile {
     // Basic type flags
-    bool isWall           = false;
-    bool isGround         = false;
-    bool isLocker         = false;
-    bool isShelf          = false;
-    bool isChunkConnection = false;
+    bool isWall            = false;
+    bool isGround          = false;
+    bool isLocker          = false;
+    bool isShelf           = false;
 
     // Interaction
-    bool searchable       = false;
-    bool wasSearched      = false;
+    bool searchable        = false;
+    bool wasSearched       = false;
 
     // Identity
-    uint8_t tileID        = 0;
+    uint8_t tileID         = 0;
+
+    // Texture ID
+    uint8_t tilemapID      = 0;
 
     // Decoration
-    bool hasDecor         = false;
-    uint8_t decorID       = 0;
+    bool hasDecor          = false;
+    uint8_t decorID        = 0;
 
     // Items
-    bool hasItem          = false;
-    uint8_t itemID        = 0;
-};
-
-/*
-++ Chunk Connection Struct
-*/
-struct ChunkConnection {
-private:
-    int rc_width = 1;
-    int rc_posX  = 0;
-    int rc_posY  = 0;
-
-    Chunk* rc_Chunk0 = nullptr;
-    Chunk* rc_Chunk1 = nullptr;
-
-public:
-    ChunkConnection(Chunk* c0, Chunk* c1, int width, int posX, int posY)
-        : rc_width(width), rc_posX(posX), rc_posY(posY), rc_Chunk0(c0), rc_Chunk1(c1) {}
-
-    bool isValid() const {
-        return rc_Chunk0 && rc_Chunk1;
-    }
-
-    Chunk* getConnectingChunk(Chunk* current) const {
-        if (current == rc_Chunk0) return rc_Chunk1;
-        if (current == rc_Chunk1) return rc_Chunk0;
-        return nullptr;
-    }
-
-    int getWidth() const { return rc_width; }
-    int getPosX()  const { return rc_posX; }
-    int getPosY()  const { return rc_posY; }
-
-    Chunk* getChunk0() const { return rc_Chunk0; }
-    Chunk* getChunk1() const { return rc_Chunk1; }
-};
-
-/*
-++ The Tile layout for a Chunk
-*/
-struct Layout {
-private:
-    std::array<Tile, CHUNKSIZE * CHUNKSIZE> arrangement;
-
-public:
-    Layout() {}
-
-    Tile& get(int x, int y) {
-        return arrangement[y * CHUNKSIZE + x];
-    }
-
-    Tile* getSafe(int x, int y) {
-        if (x < 0 || y < 0 || x >= CHUNKSIZE || y >= CHUNKSIZE) return nullptr;
-        return &arrangement[y * CHUNKSIZE + x];
-    }
-
-    int getSizeX() const { return CHUNKSIZE; }
-    int getSizeY() const { return CHUNKSIZE; }
-
-    void fill(const Tile& preset) {
-        for (int y = 0; y < CHUNKSIZE; y ++) {
-            for (int x = 0; x < CHUNKSIZE; x ++) {
-                arrangement[y * CHUNKSIZE + x] = preset;
-            }
-        }
-    }
+    bool hasItem           = false;
+    uint8_t itemID         = 0;
 };
 
 /*
 ++ The Completed Chunk with all Data
 */
 struct Chunk {
-private:
-    Layout* c_layout = nullptr;
-    std::vector<ChunkConnection*> c_connections;
+    uint32_t id = 0;
+    bool dirty = true;
 
-public:
-    uint32_t chunkID = 0;
+    Tile tiles[CHUNKSIZE][CHUNKSIZE]{};
+    SDL_Texture* texture = nullptr;
 
-    explicit Chunk(uint32_t id) : chunkID(id) {}
+    explicit Chunk(uint32_t id_) : id(id_) {}
 
-    bool setLayout(Layout* layout) {
-        if (!layout) return false;
-        c_layout = layout;
-        return true;
-    }
-
-    Layout* getLayout() const {
-        return c_layout;
-    }
-
-    void addConnection(ChunkConnection* c) {
-        if (c) c_connections.push_back(c);
-    }
-
-    const std::vector<ChunkConnection*>& getConnections() const {
-        return c_connections;
-    }
-
-    ChunkConnection* getConnectionTo(Chunk* other) const {
-        for (auto* c : c_connections)
-            if (c->getConnectingChunk(const_cast<Chunk*>(this)) == other)
-                return c;
-        return nullptr;
+    Tile* get(int x, int y)  {
+        if (x < 0 || y < 0 || x >= CHUNKSIZE || y >= CHUNKSIZE)
+            return nullptr;
+        return &tiles[y][x];
     }
 };
 
 
+inline bool isWallAt(Chunk& c, int x, int y) {
+    Tile* t = c.get(x, y);
+    return t && t->isWall;
+}
+
+uint8_t computeWallMask(Chunk& c, int x, int y) {
+    uint8_t mask = 0;
+
+    if (isWallAt(c, x, y - 1)) mask |= UP;
+    if (isWallAt(c, x - 1, y)) mask |= LEFT;
+    if (isWallAt(c, x + 1, y)) mask |= RIGHT;
+    if (isWallAt(c, x, y + 1)) mask |= DOWN;
+
+    return mask;
+}
+
+void autotileChunk(Chunk& c) {
+    for (int y = 0; y < CHUNKSIZE; ++y) {
+        for (int x = 0; x < CHUNKSIZE; ++x) {
+            Tile& t = c.tiles[y][x];
+
+            if (!t.isWall) {
+                t.tilemapID = 9; // NONE / floor
+                continue;
+            }
+
+            t.tilemapID = computeWallMask(c, x, y);
+        }
+    }
+
+    c.dirty = true;
+}
+
+void rebuildChunkTexture(SDL_Renderer* renderer, SDL_Texture* tileset, Chunk& chunk) {
+    if (chunk.texture)
+        SDL_DestroyTexture(chunk.texture);
+
+    chunk.texture = SDL_CreateTexture(
+        renderer,
+        SDL_PIXELFORMAT_RGBA32,
+        SDL_TEXTUREACCESS_TARGET,
+        CHUNKSIZE * TILESIZE,
+        CHUNKSIZE * TILESIZE
+    );
+
+    SDL_SetTextureBlendMode(chunk.texture, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderTarget(renderer, chunk.texture);
+    SDL_RenderClear(renderer);
+
+    float tsW, tsH;
+    SDL_GetTextureSize(tileset, &tsW, &tsH);
+    int tilesPerRow = int(tsW) / TILESIZE;
+
+    for (int y = 0; y < CHUNKSIZE; ++y) {
+        for (int x = 0; x < CHUNKSIZE; ++x) {
+            const Tile& t = chunk.tiles[y][x];
+            if (t.tilemapID == 9) continue;
+
+            SDL_FRect src {
+                float((t.tilemapID % tilesPerRow) * TILESIZE),
+                float((t.tilemapID / tilesPerRow) * TILESIZE),
+                float(TILESIZE),
+                float(TILESIZE)
+            };
+
+            SDL_FRect dst {
+                float(x * TILESIZE),
+                float(y * TILESIZE),
+                float(TILESIZE),
+                float(TILESIZE)
+            };
+
+            SDL_RenderTexture(renderer, tileset, &src, &dst);
+        }
+    }
+
+    SDL_SetRenderTarget(renderer, nullptr);
+    chunk.dirty = false;
+}
+
+inline int worldToChunk(float worldPos) {
+    return int(std::floor(worldPos / CHUNKPIXELSIZE));
+}
+
+inline int worldToLocalTile(float worldPos) {
+    return int(std::floor(worldPos / TILESIZE));
+}
+
+
+void renderChunk(SDL_Renderer* renderer, const Chunk& chunk, float worldX, float worldY) {
+    if (!chunk.texture) return;
+
+    SDL_FRect dst {
+        worldX,
+        worldY,
+        float(CHUNKSIZE * TILESIZE),
+        float(CHUNKSIZE * TILESIZE)
+    };
+
+    SDL_RenderTexture(renderer, chunk.texture, nullptr, &dst);
+}
+
+struct ChunkManager {
+    std::unordered_map<uint64_t, Chunk> chunks;
+
+    inline int64_t chunkKey(int x, int y) {
+        return (int64_t(x) << 32) | uint32_t(y);
+    }
+
+    /*
+    ++ Get or Create Chunk at given Coordinates
+    When Chunk does not exist, it will be created and returned
+    */
+    Chunk* getChunk(int chunkX, int chunkY) {
+        int64_t key = chunkKey(chunkX, chunkY);
+        auto it = chunks.find(key);
+        if (it != chunks.end()) {
+            return &it->second;
+        } else {
+            Chunk newChunk(uint32_t(chunks.size()));
+            chunks[key] = newChunk;
+            return &chunks[key];
+        }
+    }
+
+    void update(SDL_Renderer* renderer, SDL_Texture* tileset) {
+        for (auto& [key, chunk] : chunks) {
+            //-> Dirty when Further than 2 chunks away from the Player
+            if (chunk.dirty) {
+                autotileChunk(chunk);
+                rebuildChunkTexture(renderer, tileset, chunk);
+            }
+        }
+    }
+
+    void render(SDL_Renderer* renderer) {
+        for (auto key : chunks) {
+            float wx = float(key.first * CHUNKSIZE * TILESIZE);
+            float wy = 0.0f;
+            renderChunk(renderer, key.second, wx, wy);
+        }
+    }
+};
