@@ -74,6 +74,10 @@ STATE lastState     = STATE::NONE;
 #include "room.hpp"
 ChunkManager chunkManager;
 
+//++ Level Logic
+std::string currentLevel = "0";
+std::string currentTileMap = "4x4TileGridLightedFaces";
+
 std::unordered_map<std::string, float> frameMap = {
     {"animatedBackroundFrame", 0.0f}
 };
@@ -264,22 +268,10 @@ void initState() {
                 break;
             }
             case STATE::EXPLORING: {
-                playMusic("baseTheme");
+                playMusic(levelData[currentLevel]["theme"].get<std::string>());
                 // TODO: Exploring logic
-                chunkManager.chunks.emplace_back(0);
-                Chunk& c = chunkManager.chunks.back();
+                currentTileMap = levelData[currentLevel]["tileset"].get<std::string>();
 
-                // simple test layout
-                for (int y = 0; y < CHUNKSIZE; ++y) {
-                    for (int x = 0; x < CHUNKSIZE; ++x) {
-                        if (x == 0 || y == 0 || x == CHUNKSIZE - 1 || y == CHUNKSIZE - 1)
-                            c.tiles[y][x].isWall = true;
-                        else
-                            c.tiles[y][x].isGround = true;
-                    }
-                }
-
-                autotileChunk(c);
                 break;
             }
             default: {
@@ -355,7 +347,7 @@ void update(float deltaTime) {
         }
         case STATE::EXPLORING: {
             // TODO: Exploring logic
-            chunkManager.update(renderer, tileset);
+            chunkManager.update(renderer, textureMap[currentTileMap]);
             break;
         }
         default: {
